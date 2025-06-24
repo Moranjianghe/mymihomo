@@ -194,7 +194,10 @@ def main():
     finally:
         # 保留控制台不立即關閉
         write_color_output("=========================================", Fore.GREEN)
-        input("按Enter鍵退出")
+        answer = input("按Enter鍵退出，或輸入 Y 重新啟動 Mihomo: ")
+        if answer.strip().lower() == 'y':
+            write_color_output("正在重新啟動 Mihomo...", Fore.GREEN)
+            return main()  # 重新啟動
     
     return 0
 
