@@ -99,24 +99,44 @@ def main():
         print(f"下載完成: {asset_name}")
         # 自動解壓並只保留 exe
         if asset_name.endswith('.zip'):
+            import tempfile
+            temp_dir = tempfile.mkdtemp(dir=os.path.dirname(os.path.abspath(__file__)))
             try:
                 with zipfile.ZipFile(dest_path, 'r') as zip_ref:
                     exe_files = [f for f in zip_ref.namelist() if f.endswith('.exe')]
                     if not exe_files:
                         print('壓縮包中未找到 exe 檔案')
                     for f in exe_files:
-                        zip_ref.extract(f, os.path.dirname(dest_path))
+                        zip_ref.extract(f, temp_dir)
                         print(f"已解壓: {f}")
                 # 刪除 zip
                 os.remove(dest_path)
                 print(f"已刪除壓縮包: {asset_name}")
                 # 移動 exe 到腳本目錄（如果在子目錄）
                 for f in exe_files:
-                    src = os.path.join(os.path.dirname(dest_path), f)
-                    dst = os.path.join(os.path.dirname(dest_path), os.path.basename(f))
-                    if src != dst:
-                        shutil.move(src, dst)
-                        print(f"已移動 {src} 到 {dst}")
+                    src = os.path.join(temp_dir, f)
+                    # 目標名稱統一為 config/core_exe 或預設名
+                    from pathlib import Path
+                    script_dir = os.path.dirname(os.path.abspath(__file__))
+                    # 嘗試讀取 script_config.yaml
+                    config_path = os.path.join(script_dir, "script_config.yaml")
+                    exe_dst = None
+                    if os.path.exists(config_path):
+                        import yaml
+                        with open(config_path, 'r', encoding='utf-8') as cf:
+                            config = yaml.safe_load(cf)
+                        exe_dst = config.get('core_file')
+                        if exe_dst and not os.path.isabs(exe_dst):
+                            exe_dst = os.path.normpath(os.path.join(script_dir, exe_dst))
+                        elif exe_dst:
+                            exe_dst = os.path.normpath(exe_dst)
+                    if not exe_dst:
+                        exe_dst = os.path.join(script_dir, os.path.basename(f))
+                    if os.path.exists(exe_dst):
+                        os.remove(exe_dst)
+                    shutil.move(src, exe_dst)
+                    print(f"已移動 {src} 到 {exe_dst}")
+                shutil.rmtree(temp_dir)
             except Exception as e:
                 print(f"自動解壓失敗: {e}")
     else:

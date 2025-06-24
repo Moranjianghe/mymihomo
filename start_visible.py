@@ -9,6 +9,8 @@ import signal
 import datetime
 import ctypes
 import colorama
+import yaml
+import json
 from colorama import Fore, Style
 
 # 初始化colorama
@@ -16,11 +18,37 @@ colorama.init()
 
 # 定義檔案路徑
 script_dir = os.path.dirname(os.path.realpath(__file__))
-exe_path = os.path.join(script_dir, "mihomo-windows-amd64.exe")
-config_path = r"C:\Users\xzb38\OneDrive\config\L1KUyYG7Q6K7.yaml"
-log_path = os.path.join(script_dir, "mihomo_status.txt")
-pid_file_path = os.path.join(script_dir, "mihomo_pid.txt")
-data_dir = os.path.join(script_dir, "data")  # 數據目錄設置為腳本所在目錄下的data文件夾
+
+# 統一讀取 script_config.yaml
+SCRIPT_CONFIG_PATH = os.path.join(script_dir, "script_config.yaml")
+with open(SCRIPT_CONFIG_PATH, 'r', encoding='utf-8') as f:
+    config = yaml.safe_load(f)
+
+# 取得核心執行檔路徑，若 script_config.yaml 未設置則使用預設值
+exe_path = config.get('core_file')
+if not exe_path:
+    exe_path = os.path.join(script_dir, 'mihomo-windows-amd64.exe')
+# 處理相對路徑，並正規化
+exe_path = os.path.normpath(os.path.join(script_dir, exe_path)) if not os.path.isabs(exe_path) else os.path.normpath(exe_path)
+
+config_path = config.get('config_file')
+if not config_path:
+    config_path = os.path.join(script_dir, 'config.yaml')
+config_path = os.path.normpath(os.path.join(script_dir, config_path)) if not os.path.isabs(config_path) else os.path.normpath(config_path)
+
+data_dir = config.get('data_dir')
+if not data_dir:
+    data_dir = os.path.join(script_dir, 'data')
+# 處理相對路徑，並正規化
+data_dir = os.path.normpath(os.path.join(script_dir, data_dir)) if not os.path.isabs(data_dir) else os.path.normpath(data_dir)
+
+# 定義腳本緩存目錄
+cache_dir = os.path.join(script_dir, "cache")
+if not os.path.exists(cache_dir):
+    os.makedirs(cache_dir)
+
+# 合併狀態與PID到一個檔案
+status_file_path = os.path.join(cache_dir, "mihomo_status.json")
 
 # 確保data目錄存在
 if not os.path.exists(data_dir):
@@ -46,18 +74,15 @@ def is_process_running(process_name):
     except:
         return False
 
-def save_pid_to_file(pid):
-    """保存進程ID到檔案"""
-    with open(pid_file_path, 'w', encoding='utf-8') as f:
-        f.write(str(pid))
-
-def log_startup_info(pid):
-    """記錄啟動信息"""
-    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    with open(log_path, 'w', encoding='utf-8') as f:
-        f.write(f"Mihomo已在前台啟動\n")
-        f.write(f"啟動時間: {timestamp}\n")
-        f.write(f"進程ID: {pid}\n")
+def save_status_and_pid(pid):
+    """保存進程ID和啟動狀態到JSON檔案"""
+    status = {
+        "status": "started",
+        "start_time": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "pid": pid
+    }
+    with open(status_file_path, 'w', encoding='utf-8') as f:
+        json.dump(status, f, ensure_ascii=False, indent=2)
 
 def check_tun_config(config_file_path):
     """檢查配置文件中是否啟用TUN模式"""
@@ -151,8 +176,7 @@ def main():
         
         # 保存進程ID和記錄啟動信息
         pid = process.pid
-        save_pid_to_file(pid)
-        log_startup_info(pid)
+        save_status_and_pid(pid)
         write_color_output(f"Mihomo已啟動，進程ID: {pid}", Fore.GREEN)
         
         # 設置Ctrl+C處理
@@ -162,8 +186,8 @@ def main():
             try:
                 process.wait(timeout=5)  # 等待進程結束
                 write_color_output("Mihomo已停止運行", Fore.RED)
-                if os.path.exists(pid_file_path):
-                    os.remove(pid_file_path)
+                if os.path.exists(status_file_path):
+                    os.remove(status_file_path)
             except subprocess.TimeoutExpired:
                 write_color_output("Mihomo未能在超時時間內關閉，可能需要手動終止", Fore.RED)
             sys.exit(0)
@@ -184,14 +208,13 @@ def main():
         else:
             write_color_output(f"Mihomo異常退出，返回碼: {return_code}", Fore.RED)
         
-        # 刪除PID檔案
-        if os.path.exists(pid_file_path):
-            os.remove(pid_file_path)
-            
     except Exception as e:
         write_color_output(f"啟動Mihomo時發生錯誤: {str(e)}", Fore.RED)
         return 1
     finally:
+        # 刪除PID檔案
+        if os.path.exists(status_file_path):
+            os.remove(status_file_path)
         # 保留控制台不立即關閉
         write_color_output("=========================================", Fore.GREEN)
         input("按Enter鍵退出")
