@@ -147,7 +147,9 @@ def main():
                                    stdout=subprocess.PIPE, 
                                    stderr=subprocess.STDOUT, 
                                    universal_newlines=True, 
-                                   bufsize=1)
+                                   bufsize=1,
+                                   encoding="utf-8",
+                                   errors="replace")
         
         # 保存進程ID和記錄啟動信息
         pid = process.pid
