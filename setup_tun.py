@@ -11,6 +11,7 @@ import shutil
 import winreg
 import time
 import colorama
+import yaml
 from colorama import Fore, Style
 
 # 初始化colorama
@@ -18,7 +19,21 @@ colorama.init()
 
 # 定義檔案路徑
 script_dir = os.path.dirname(os.path.realpath(__file__))
-config_path = r"C:\Users\xzb38\OneDrive\config\L1KUyYG7Q6K7.yaml"
+
+# 統一讀取 script_config.yaml
+SCRIPT_CONFIG_PATH = os.path.join(script_dir, "script_config.yaml")
+with open(SCRIPT_CONFIG_PATH, 'r', encoding='utf-8') as f:
+    config = yaml.safe_load(f)
+
+config_path = config.get('config_file')
+if not config_path:
+    config_path = os.path.join(script_dir, 'config.yaml')
+config_path = os.path.normpath(os.path.join(script_dir, config_path)) if not os.path.isabs(config_path) else os.path.normpath(config_path)
+data_dir = config.get('data_dir')
+if not data_dir:
+    data_dir = os.path.join(script_dir, 'data')
+data_dir = os.path.normpath(os.path.join(script_dir, data_dir)) if not os.path.isabs(data_dir) else os.path.normpath(data_dir)
+
 wintun_dir = os.path.join(script_dir, "wintun")
 wintun_zip_path = os.path.join(script_dir, "wintun.zip")
 wintun_dll_path = os.path.join(wintun_dir, "wintun.dll")

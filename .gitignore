@@ -2,4 +2,7 @@
 /mihomo-windows-amd64.exe
 /mihomo_pid.txt
 /mihomo_status.txt
+mihomo.exe
+temp*
 output_config.yaml
+cache/
