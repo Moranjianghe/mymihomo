@@ -79,8 +79,19 @@ def download_file(url, dest_path):
             with open(dest_path, 'wb') as f:
                 shutil.copyfileobj(r.raw, f)
         return True
+    except requests.exceptions.Timeout as e:
+        print(f"下載失敗（連線逾時）: {e}\n請檢查網路連線，或確認你能正常訪問 GitHub 及 objects.githubusercontent.com。")
+        return False
+    except requests.exceptions.ConnectionError as e:
+        print(f"下載失敗（連線錯誤）: {e}\n請檢查網路連線，或確認你能正常訪問 GitHub 及 objects.githubusercontent.com。")
+        return False
+    except requests.exceptions.HTTPError as e:
+        print(f"下載失敗（HTTP 錯誤）: {e}\nHTTP 狀態碼: {getattr(e.response, 'status_code', '未知')}")
+        return False
     except Exception as e:
-        print(f"下載失敗: {e}")
+        import traceback
+        print(f"下載失敗: {e}\n詳細錯誤如下：")
+        traceback.print_exc()
         return False
 
 def main():
