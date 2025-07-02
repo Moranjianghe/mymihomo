@@ -1,0 +1,3 @@
+core_file: ./mihomo.exe
+config_file: F:/data/clash.yaml
+data_dir: ./data
