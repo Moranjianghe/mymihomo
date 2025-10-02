@@ -34,5 +34,3 @@ $bytes[0x15] = $bytes[0x15] -bor 0x20
 [System.IO.File]::WriteAllBytes($shortcutPath, $bytes)
 '''
 subprocess.run(["powershell", "-Command", ps_script], check=True)
-
-print(f"捷徑已建立並設為管理員模式：{shortcut_path}")
