@@ -3,44 +3,32 @@
 
 import os
 import sys
-import time
 import subprocess
 import signal
 import datetime
 import ctypes
-import colorama
-import yaml
 import json
 from colorama import Fore, Style
+from pathlib import Path
 
-# 初始化colorama
-colorama.init()
+from common import (
+    SCRIPT_DIR,
+    get_default_data_config_path,
+    get_effective_config_path,
+    get_runtime_paths,
+    is_tun_enabled,
+    load_script_config,
+    write_color_output,
+)
 
 # 定義檔案路徑
-script_dir = os.path.dirname(os.path.realpath(__file__))
-
-# 統一讀取 script_config.yaml
-SCRIPT_CONFIG_PATH = os.path.join(script_dir, "script_config.yaml")
-with open(SCRIPT_CONFIG_PATH, 'r', encoding='utf-8') as f:
-    config = yaml.safe_load(f)
-
-# 取得核心執行檔路徑，若 script_config.yaml 未設置則使用預設值
-exe_path = config.get('core_file')
-if not exe_path:
-    exe_path = os.path.join(script_dir, 'mihomo-windows-amd64.exe')
-# 處理相對路徑，並正規化
-exe_path = os.path.normpath(os.path.join(script_dir, exe_path)) if not os.path.isabs(exe_path) else os.path.normpath(exe_path)
-
-config_path = config.get('config_file')
-if not config_path:
-    config_path = os.path.join(script_dir, 'config.yaml')
-config_path = os.path.normpath(os.path.join(script_dir, config_path)) if not os.path.isabs(config_path) else os.path.normpath(config_path)
-
-data_dir = config.get('data_dir')
-if not data_dir:
-    data_dir = os.path.join(script_dir, 'data')
-# 處理相對路徑，並正規化
-data_dir = os.path.normpath(os.path.join(script_dir, data_dir)) if not os.path.isabs(data_dir) else os.path.normpath(data_dir)
+script_dir = str(SCRIPT_DIR)
+script_config = load_script_config()
+runtime_paths = get_runtime_paths(script_config)
+exe_path = str(runtime_paths["core_file"])
+config_path = get_effective_config_path(script_config)
+data_dir = str(runtime_paths["data_dir"])
+config_check_path = config_path or get_default_data_config_path(data_dir)
 
 # 定義腳本緩存目錄
 cache_dir = os.path.join(script_dir, "cache")
@@ -54,15 +42,29 @@ status_file_path = os.path.join(cache_dir, "mihomo_status.json")
 if not os.path.exists(data_dir):
     os.makedirs(data_dir)
 
-def write_color_output(message, color=Fore.WHITE):
-    """彩色輸出函數"""
-    print(f"{color}{message}{Style.RESET_ALL}")
-
 def check_is_admin():
     """檢查是否以管理員權限運行"""
     try:
         return ctypes.windll.shell32.IsUserAnAdmin() != 0
     except:
+        return False
+
+def relaunch_as_admin():
+    """透過 UAC 重新以管理員權限啟動目前腳本"""
+    script_path = os.path.abspath(__file__)
+    args = subprocess.list2cmdline([script_path, *sys.argv[1:]])
+    try:
+        result = ctypes.windll.shell32.ShellExecuteW(
+            None,
+            "runas",
+            sys.executable,
+            args,
+            script_dir,
+            1,
+        )
+        return result > 32
+    except Exception as e:
+        write_color_output(f"請求管理員權限失敗: {e}", Fore.RED)
         return False
 
 def is_process_running(process_name):
@@ -84,22 +86,6 @@ def save_status_and_pid(pid):
     with open(status_file_path, 'w', encoding='utf-8') as f:
         json.dump(status, f, ensure_ascii=False, indent=2)
 
-def check_tun_config(config_file_path):
-    """檢查配置文件中是否啟用TUN模式"""
-    try:
-        if not os.path.exists(config_file_path):
-            return False, "配置文件不存在"
-        
-        # 簡單讀取配置文件查找tun配置
-        with open(config_file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-            if 'tun:' in content and 'enable: true' in content:
-                return True, None
-            else:
-                return False, "配置文件中未找到啟用的TUN模式配置"
-    except Exception as e:
-        return False, f"檢查配置文件時發生錯誤: {str(e)}"
-
 def main():
     """主函數"""
     # 檢查是否以管理員權限運行（TUN模式需要管理員權限）
@@ -109,19 +95,35 @@ def main():
     write_color_output("Mihomo前台運行模式", Fore.GREEN)
     write_color_output("=========================================", Fore.GREEN)
     write_color_output(f"執行檔路徑: {exe_path}", Fore.CYAN)
-    write_color_output(f"配置文件: {config_path}", Fore.CYAN)
+    if config_path:
+        write_color_output(f"配置文件: {config_path}", Fore.CYAN)
+    else:
+        write_color_output(
+            f"配置文件: 未指定，啟動時不傳 -f；預檢會嘗試讀取 {config_check_path}",
+            Fore.CYAN,
+        )
     write_color_output(f"數據目錄: {data_dir}", Fore.CYAN)  # 添加數據目錄顯示
     write_color_output(f"時間: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", Fore.CYAN)
     write_color_output(f"管理員權限: {'是' if is_admin else '否'}", Fore.CYAN)
     
     # 檢查配置文件中的TUN模式設置
-    tun_enabled, tun_error = check_tun_config(config_path)
-    if tun_enabled:
-        write_color_output(f"TUN模式: 配置文件中已啟用", Fore.CYAN)
-        if not is_admin:
-            write_color_output("警告: TUN模式需要管理員權限才能正常工作，請以管理員身份運行此腳本", Fore.YELLOW)
+    if config_check_path and os.path.exists(config_check_path):
+        tun_enabled, tun_error = is_tun_enabled(config_check_path)
+        if tun_enabled:
+            write_color_output(f"TUN模式: 配置文件中已啟用 ({config_check_path})", Fore.CYAN)
+            if not is_admin:
+                write_color_output("警告: TUN模式需要管理員權限才能正常工作，請以管理員身份運行此腳本", Fore.YELLOW)
+                answer = input("是否重新以管理員權限啟動? (Y/N): ")
+                if answer.lower() == 'y':
+                    if relaunch_as_admin():
+                        write_color_output("已發出管理員權限啟動請求，當前視窗將退出。", Fore.GREEN)
+                        return 120
+                    write_color_output("無法自動請求管理員權限，將繼續目前流程。", Fore.RED)
+        else:
+            write_color_output(f"TUN模式: 未啟用 ({tun_error if tun_error else '配置文件中未指定'})", Fore.CYAN)
     else:
-        write_color_output(f"TUN模式: 未啟用 ({tun_error if tun_error else '配置文件中未指定'})", Fore.CYAN)
+        tun_enabled = False
+        write_color_output(f"TUN模式: 未檢查（找不到預檢配置 {config_check_path}）", Fore.CYAN)
     
     write_color_output("=========================================", Fore.GREEN)
     
@@ -132,13 +134,14 @@ def main():
         return 1
         
     # 檢查配置文件是否存在
-    if not os.path.exists(config_path):
+    if config_path and not os.path.exists(config_path):
         write_color_output(f"錯誤: 配置文件不存在: {config_path}", Fore.RED)
         input("按任意鍵退出")
         return 1
     
     # 檢查是否已經有mihomo實例在運行
-    if is_process_running("mihomo-windows-amd64.exe"):
+    process_name = Path(exe_path).name
+    if is_process_running(process_name):
         write_color_output("警告: 發現Mihomo已在運行，繼續將啟動額外的實例", Fore.YELLOW)
         answer = input("是否繼續? (Y/N): ")
         if answer.lower() != 'y':
@@ -153,7 +156,7 @@ def main():
     # TUN模式警告（如果配置文件啟用了TUN但沒有管理員權限）
     if tun_enabled and not is_admin:
         write_color_output("\n警告: 配置文件中啟用了TUN模式，但當前未以管理員身份運行", Fore.RED)
-        write_color_output("TUN模式可能無法正常工作，請嘗試右鍵點擊此腳本並選擇「以管理員身份運行」", Fore.RED)
+        write_color_output("TUN模式可能無法正常工作，建議重新以管理員身份運行。", Fore.RED)
         answer = input("是否繼續啟動? (Y/N): ")
         if answer.lower() != 'y':
             write_color_output("操作已取消。", Fore.CYAN)
@@ -161,7 +164,9 @@ def main():
     
     try:
         # 啟動進程 (使用標準的命令行參數)
-        cmd = [exe_path, "-f", config_path, "-d", data_dir]  # 添加-d參數指定數據目錄
+        cmd = [exe_path, "-d", data_dir]
+        if config_path:
+            cmd.extend(["-f", str(config_path)])
         
         # 根據源碼分析，mihomo不支持直接通過命令行啟用TUN模式
         # TUN模式必須在配置文件中配置，這裡只顯示相關信息

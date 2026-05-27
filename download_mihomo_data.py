@@ -3,9 +3,9 @@
 自動下載 Mihomo 所需數據檔案（geoip.metadb、geosite.db）
 """
 import os
-import sys
-import requests
 from colorama import Fore, Style, init
+
+from common import download_file_requests, get_runtime_paths, load_script_config
 
 init()
 
@@ -14,12 +14,7 @@ def write_color_output(message, color=Fore.WHITE):
 
 def download_file(url, dest_path):
     try:
-        with requests.get(url, stream=True, timeout=30) as r:
-            r.raise_for_status()
-            with open(dest_path, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
+        download_file_requests(url, dest_path, config=load_script_config(required=False))
         write_color_output(f"下載完成: {os.path.basename(dest_path)}", Fore.GREEN)
         return True
     except Exception as e:
@@ -27,8 +22,8 @@ def download_file(url, dest_path):
         return False
 
 def main():
-    script_dir = os.path.dirname(os.path.realpath(__file__))
-    data_dir = os.path.join(script_dir, 'data')
+    config = load_script_config(required=False)
+    data_dir = str(get_runtime_paths(config)["data_dir"])
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
 
@@ -69,9 +64,4 @@ def main():
     input("按 Enter 鍵退出...")
 
 if __name__ == "__main__":
-    try:
-        import requests
-    except ImportError:
-        print("缺少 requests 模組，正在自動安裝...")
-        os.system(f'{sys.executable} -m pip install requests')
     main()

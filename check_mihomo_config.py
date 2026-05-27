@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 import requests
 
+from common import get_requests_proxies, load_script_config
+
 def main():
     print("Mihomo 配置查詢工具")
+    config = load_script_config(required=False)
     api_host = input("API 地址 (預設 127.0.0.1): ").strip() or "127.0.0.1"
     api_port = input("API 端口 (預設 9090): ").strip() or "9090"
     api_secret = input("API 密碼 (如無可留空): ").strip()
@@ -10,7 +13,7 @@ def main():
     headers = {"Authorization": f"Bearer {api_secret}"} if api_secret else {}
     print(f"\n正在請求 {api_url} ...")
     try:
-        resp = requests.get(api_url, headers=headers, timeout=5)
+        resp = requests.get(api_url, headers=headers, timeout=5, proxies=get_requests_proxies(config))
         if resp.status_code == 200:
             print("\nMihomo 當前生效配置如下（前500字）：\n")
             print(resp.text[:500])

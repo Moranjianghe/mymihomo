@@ -5,34 +5,31 @@ import os
 import sys
 import ctypes
 import subprocess
-import urllib.request
 import zipfile
 import shutil
 import winreg
 import time
-import colorama
-import yaml
 from colorama import Fore, Style
 
-# 初始化colorama
-colorama.init()
+from common import (
+    SCRIPT_DIR,
+    download_file_urllib,
+    get_default_data_config_path,
+    get_effective_config_path,
+    get_runtime_paths,
+    get_tun_config,
+    is_tun_enabled,
+    load_script_config,
+    write_color_output,
+)
 
 # 定義檔案路徑
-script_dir = os.path.dirname(os.path.realpath(__file__))
-
-# 統一讀取 script_config.yaml
-SCRIPT_CONFIG_PATH = os.path.join(script_dir, "script_config.yaml")
-with open(SCRIPT_CONFIG_PATH, 'r', encoding='utf-8') as f:
-    config = yaml.safe_load(f)
-
-config_path = config.get('config_file')
-if not config_path:
-    config_path = os.path.join(script_dir, 'config.yaml')
-config_path = os.path.normpath(os.path.join(script_dir, config_path)) if not os.path.isabs(config_path) else os.path.normpath(config_path)
-data_dir = config.get('data_dir')
-if not data_dir:
-    data_dir = os.path.join(script_dir, 'data')
-data_dir = os.path.normpath(os.path.join(script_dir, data_dir)) if not os.path.isabs(data_dir) else os.path.normpath(data_dir)
+script_dir = str(SCRIPT_DIR)
+script_config = load_script_config()
+runtime_paths = get_runtime_paths(script_config)
+data_dir = str(runtime_paths["data_dir"])
+config_path = get_effective_config_path(script_config)
+config_check_path = config_path or get_default_data_config_path(data_dir)
 
 wintun_dir = os.path.join(script_dir, "wintun")
 wintun_zip_path = os.path.join(script_dir, "wintun.zip")
@@ -41,10 +38,6 @@ wintun_dll_system_path = r"C:\Windows\System32\wintun.dll"
 
 # WinTUN 下載 URL
 WINTUN_URL = "https://www.wintun.net/builds/wintun-0.14.1.zip"
-
-def write_color_output(message, color=Fore.WHITE):
-    """彩色輸出函數"""
-    print(f"{color}{message}{Style.RESET_ALL}")
 
 def check_is_admin():
     """檢查是否以管理員權限運行"""
@@ -76,10 +69,7 @@ def download_wintun():
     """下載 WinTUN 安裝包"""
     write_color_output(f"正在從 {WINTUN_URL} 下載 WinTUN...", Fore.YELLOW)
     try:
-        # 建立網絡請求
-        with urllib.request.urlopen(WINTUN_URL) as response, open(wintun_zip_path, 'wb') as out_file:
-            data = response.read()
-            out_file.write(data)
+        download_file_urllib(WINTUN_URL, wintun_zip_path, config=script_config)
         write_color_output(f"下載完成，文件保存至: {wintun_zip_path}", Fore.GREEN)
         return True
     except Exception as e:
@@ -132,64 +122,24 @@ def install_wintun():
         write_color_output(f"安裝 WinTUN 失敗: {str(e)}", Fore.RED)
         return False
 
-def check_tun_config(config_file_path):
-    """檢查配置文件中是否啟用 TUN 模式"""
-    try:
-        if not os.path.exists(config_file_path):
-            return False, "配置文件不存在"
-        
-        # 讀取配置文件查找 tun 配置
-        with open(config_file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-            if 'tun:' in content:
-                if 'enable: true' in content:
-                    return True, None
-                else:
-                    return False, "TUN 模式在配置文件中存在但未啟用"
-            else:
-                return False, "配置文件中未設置 TUN 模式"
-    except Exception as e:
-        return False, f"檢查配置文件時發生錯誤: {str(e)}"
-
 def get_tun_config_details(config_file_path):
     """獲取配置文件中 TUN 模式的詳細設置"""
-    details = {
-        "stack": "未設置",
-        "dns-hijack": "未設置",
-        "auto-route": "未設置",
-        "auto-detect-interface": "未設置"
-    }
-    
     try:
         if not os.path.exists(config_file_path):
-            return details
-        
-        with open(config_file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-            lines = content.split("\n")
-            in_tun_section = False
-            
-            for line in lines:
-                line = line.strip()
-                if not in_tun_section and line == "tun:":
-                    in_tun_section = True
-                    continue
-                    
-                if in_tun_section:
-                    if line.startswith("  ") or line.startswith("\t"):
-                        if "stack:" in line:
-                            details["stack"] = line.split("stack:")[1].strip()
-                        elif "dns-hijack:" in line:
-                            details["dns-hijack"] = "已設置"
-                        elif "auto-route:" in line:
-                            details["auto-route"] = line.split("auto-route:")[1].strip()
-                        elif "auto-detect-interface:" in line:
-                            details["auto-detect-interface"] = line.split("auto-detect-interface:")[1].strip()
-                    elif not line.startswith(" ") and not line.startswith("\t") and line.strip():
-                        # 已離開 tun 部分
-                        break
-        
-        return details
+            return {
+                "stack": "未設置",
+                "dns-hijack": "未設置",
+                "auto-route": "未設置",
+                "auto-detect-interface": "未設置",
+            }
+
+        tun = get_tun_config(config_file_path)
+        return {
+            "stack": tun.get("stack", "未設置"),
+            "dns-hijack": "已設置" if tun.get("dns-hijack") else "未設置",
+            "auto-route": tun.get("auto-route", "未設置"),
+            "auto-detect-interface": tun.get("auto-detect-interface", "未設置"),
+        }
     except Exception as e:
         write_color_output(f"獲取 TUN 配置詳情時發生錯誤: {str(e)}", Fore.RED)
         return details
@@ -246,15 +196,21 @@ def main():
     
     # 檢查配置文件
     write_color_output("\n檢查 Mihomo 配置文件...", Fore.BLUE)
-    config_exists = os.path.exists(config_path)
-    write_color_output(f"配置文件 ({config_path}): {'存在' if config_exists else '不存在'}", Fore.CYAN if config_exists else Fore.YELLOW)
-    
+    config_exists = os.path.exists(config_check_path)
+    if config_path:
+        write_color_output(f"配置文件 ({config_check_path}): {'存在' if config_exists else '不存在'}", Fore.CYAN if config_exists else Fore.YELLOW)
+    else:
+        write_color_output(
+            f"配置文件: 未指定，改為預檢 data 目錄預設配置 {config_check_path}: {'存在' if config_exists else '不存在'}",
+            Fore.CYAN if config_exists else Fore.YELLOW,
+        )
+
     if config_exists:
-        tun_enabled, tun_error = check_tun_config(config_path)
+        tun_enabled, tun_error = is_tun_enabled(config_check_path)
         if tun_enabled:
             write_color_output("配置文件中已啟用 TUN 模式", Fore.GREEN)
             # 獲取詳細配置
-            details = get_tun_config_details(config_path)
+            details = get_tun_config_details(config_check_path)
             write_color_output("TUN 模式配置詳情:", Fore.CYAN)
             write_color_output(f"  網絡協議棧: {details['stack']}", Fore.CYAN)
             write_color_output(f"  DNS 劫持: {details['dns-hijack']}", Fore.CYAN)

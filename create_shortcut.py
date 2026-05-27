@@ -1,5 +1,8 @@
 import os
+import sys
 from win32com.client import Dispatch
+
+from common import SCRIPT_DIR, write_color_output
 
 # 1. 捷徑名稱與目標
 shortcut_name = "Mihomo-Admin.lnk"
@@ -7,11 +10,11 @@ start_menu = os.path.join(os.environ["APPDATA"], r"Microsoft\Windows\Start Menu\
 shortcut_path = os.path.join(start_menu, shortcut_name)
 
 # 2. 設定目標與參數（直接啟動 python 腳本，無需 PowerShell 包裹）
-script_dir = os.path.dirname(os.path.abspath(__file__))
-target = "python.exe"
+script_dir = str(SCRIPT_DIR)
+target = sys.executable
 arguments = "start_visible.py"
 working_dir = script_dir
-icon = "python.exe"
+icon = sys.executable
 
 # 3. 建立捷徑
 shell = Dispatch("WScript.Shell")
@@ -34,3 +37,5 @@ $bytes[0x15] = $bytes[0x15] -bor 0x20
 [System.IO.File]::WriteAllBytes($shortcutPath, $bytes)
 '''
 subprocess.run(["powershell", "-Command", ps_script], check=True)
+
+write_color_output(f"已建立管理員捷徑: {shortcut_path}")

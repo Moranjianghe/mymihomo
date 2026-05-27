@@ -7,3 +7,6 @@ temp*
 output_config.yaml
 cache/
 script_config.yaml
+__pycache__/
+*.pyc
+config.yaml

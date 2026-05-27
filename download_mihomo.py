@@ -8,6 +8,16 @@ import requests
 import shutil
 import platform
 import zipfile
+from pathlib import Path
+
+from common import (
+    SCRIPT_DIR,
+    download_file_requests,
+    get_optional_path,
+    get_requests_proxies,
+    get_runtime_paths,
+    load_script_config,
+)
 
 def get_platform_asset_name():
     system = platform.system().lower()
@@ -46,7 +56,8 @@ def get_latest_release_download_url():
         print("不支援的作業系統或架構。")
         return None, None
     try:
-        resp = requests.get(api_url, timeout=10)
+        config = load_script_config(required=False)
+        resp = requests.get(api_url, timeout=10, proxies=get_requests_proxies(config))
         resp.raise_for_status()
         data = resp.json()
         tag = data.get("tag_name", "")
@@ -74,10 +85,7 @@ def get_latest_release_download_url():
 
 def download_file(url, dest_path):
     try:
-        with requests.get(url, stream=True, timeout=30) as r:
-            r.raise_for_status()
-            with open(dest_path, 'wb') as f:
-                shutil.copyfileobj(r.raw, f)
+        download_file_requests(url, dest_path, config=load_script_config(required=False))
         return True
     except requests.exceptions.Timeout as e:
         print(f"下載失敗（連線逾時）: {e}\n請檢查網路連線，或確認你能正常訪問 GitHub 及 objects.githubusercontent.com。")
@@ -100,7 +108,8 @@ def main():
     if not url:
         print(f"無法獲取下載連結（{asset_name}），請稍後再試。")
         return 1
-    dest_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), asset_name)
+    script_config = load_script_config(required=False)
+    dest_path = os.path.join(str(SCRIPT_DIR), asset_name)
     print(f"下載連結: {url}")
     print(f"將下載到: {dest_path}")
     if os.path.exists(dest_path):
@@ -128,21 +137,11 @@ def main():
                     src = os.path.join(temp_dir, f)
                     # 目標名稱統一為 config/core_exe 或預設名
                     from pathlib import Path
-                    script_dir = os.path.dirname(os.path.abspath(__file__))
-                    # 嘗試讀取 script_config.yaml
-                    config_path = os.path.join(script_dir, "script_config.yaml")
-                    exe_dst = None
-                    if os.path.exists(config_path):
-                        import yaml
-                        with open(config_path, 'r', encoding='utf-8') as cf:
-                            config = yaml.safe_load(cf)
-                        exe_dst = config.get('core_file')
-                        if exe_dst and not os.path.isabs(exe_dst):
-                            exe_dst = os.path.normpath(os.path.join(script_dir, exe_dst))
-                        elif exe_dst:
-                            exe_dst = os.path.normpath(exe_dst)
-                    if not exe_dst:
-                        exe_dst = os.path.join(script_dir, os.path.basename(f))
+                    script_dir = str(SCRIPT_DIR)
+                    exe_dst = str(
+                        get_optional_path(script_config, "core_file")
+                        or get_runtime_paths(script_config)["core_file"]
+                    )
                     if os.path.exists(exe_dst):
                         os.remove(exe_dst)
                     shutil.move(src, exe_dst)
@@ -154,9 +153,4 @@ def main():
         print("下載失敗。請檢查網路連線或稍後再試。")
 
 if __name__ == "__main__":
-    try:
-        import requests
-    except ImportError:
-        print("缺少 requests 模組，正在自動安裝...")
-        os.system(f'{sys.executable} -m pip install requests')
     main()

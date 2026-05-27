@@ -1,3 +1,9 @@
 core_file: ./mihomo.exe
+# 可留空。留空時啟動 Mihomo 不傳 -f，讓 Mihomo 自行在 data_dir 尋找預設配置。
+# update_config.py 會把配置更新到 data_dir/config.yaml。
 config_file: F:/data/clash.yaml
 data_dir: ./data
+# 可選：Mihomo 配置訂閱地址，用於 update_config.py
+# config_url: https://example.com/your-subscription
+# 下載 GitHub 資源較慢時可啟用，例如 v2rayN 混合代理：
+# proxy: http://127.0.0.1:10808
